@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Календарь занятий</title>
-<!-- Подключаем библиотеку Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- Заглушка для favicon, чтобы убрать ошибку 404 в консоли -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
@@ -14,6 +12,7 @@
   h1 { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
   .sync-status { font-size: 14px; font-weight: 400; color: #666; display: flex; align-items: center; gap: 5px; }
   .sync-status.active { color: #16a34a; }
+  .sync-status.error { color: #dc2626; cursor: pointer; text-decoration: underline; }
 
   .students { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
   .view-toggle { display: flex; gap: 5px; margin-bottom: 10px; }
@@ -242,46 +241,41 @@ window.onerror = function(message, source, lineno, colno, error) {
 
 // ====== КОНФИГУРАЦИЯ SUPABASE ======
 const SUPABASE_URL = 'https://qinvqsqcaaplyfloajal.supabase.co';
-// ВНИМАНИЕ: Убедитесь, что это именно anon key из Settings -> API. Он должен начинаться на "eyJ..."
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbnZxc3FjYWFwbHlmbG9hamFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNTQ1MzksImV4cCI6MjExMDczMDUzOX0.9-eC-zzv_zSqf3T_wiu1q0c6NJyBmwtqlqbmT47P1P4'; 
+// ⚠️ ВСТАВЬТЕ СЮДА ВАШ ANON KEY (начинается на eyJ...)
+const SUPABASE_ANON_KEY = 'ВАШ_ПРАВИЛЬНЫЙ_ANON_КЛЮЧ_ЗДЕСЬ'; 
 
 let supabaseClient = null;
 let isSupabaseActive = false;
 
-if (typeof window !== 'undefined' && window.supabase && SUPABASE_URL.includes('supabase.co') && SUPABASE_ANON_KEY.length > 10) {
+if (typeof window !== 'undefined' && window.supabase && SUPABASE_URL.includes('supabase.co') && SUPABASE_ANON_KEY.length > 10 && SUPABASE_ANON_KEY.startsWith('eyJ')) {
   try {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     isSupabaseActive = true;
-    document.getElementById('syncStatus').innerHTML = '☁️ Синхронизация...';
+    document.getElementById('syncStatus').innerHTML = '☁️ Проверка подключения...';
     
-    // ✅ ДИАГНОСТИКА ТЕПЕРЬ ЗДЕСЬ - ПОСЛЕ ИНИЦИАЛИЗАЦИИ
-    console.log('✅ Supabase клиент создан');
-    console.log('🔑 URL:', SUPABASE_URL);
-    console.log('🔑 Ключ начинается с:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
-    
-    // Тестовый запрос для проверки доступа
+    // Тестовый запрос
     supabaseClient.from('app_data').select('count', { count: 'exact', head: true })
       .then(({ data, error }) => {
         if (error) {
-          console.error('❌ Ошибка подключения:', error.message);
-          if (error.code === 'PGRST301') {
-            console.warn('⚠️ Таблица app_data не существует! Создайте её через SQL Editor:');
-            console.warn(`CREATE TABLE IF NOT EXISTS app_data (id TEXT PRIMARY KEY, payload JSONB NOT NULL DEFAULT '{}'::jsonb);`);
-            console.warn(`ALTER TABLE app_data ENABLE ROW LEVEL SECURITY;`);
-            console.warn(`CREATE POLICY "Allow all" ON app_data FOR ALL USING (true) WITH CHECK (true);`);
-          } else if (error.code === '42501') {
-            console.error('🔒 Ошибка прав доступа (RLS). Выполните в SQL Editor:');
-            console.error(`DROP POLICY IF EXISTS "Allow all" ON app_data;`);
-            console.error(`CREATE POLICY "Allow all" ON app_data FOR ALL USING (true) WITH CHECK (true);`);
-          }
+          console.error('❌ Ошибка Supabase:', error.message, error.code);
+          const statusEl = document.getElementById('syncStatus');
+          statusEl.innerHTML = '⚠️ Ошибка БД (кликните для помощи)';
+          statusEl.className = 'sync-status error';
+          statusEl.onclick = () => {
+            alert('Ошибка 401 означает проблему с правами доступа.\n\nРешение:\n1. Зайдите в Supabase Dashboard → SQL Editor\n2. Выполните:\n\nALTER TABLE app_data DISABLE ROW LEVEL SECURITY;\n\n3. Обновите эту страницу.');
+          };
         } else {
-          console.log('✅ Подключение работает! Таблица доступна.');
+          console.log('✅ Supabase подключен!');
+          document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
+          document.getElementById('syncStatus').classList.add('active');
         }
       });
       
   } catch (e) {
     console.error("Ошибка инициализации Supabase:", e);
   }
+} else {
+  console.log('ℹ️ Supabase не активен (проверьте ключ)');
 }
 
 let data = { students: [], lessons: [], payments: [], viewMode: 'buttons' };
@@ -302,7 +296,7 @@ async function save() {
       document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
       document.getElementById('syncStatus').classList.add('active');
     } catch (e) {
-      console.error("Ошибка сохранения в Supabase:", e);
+      console.error("Ошибка сохранения:", e);
       document.getElementById('syncStatus').innerHTML = '⚠️ Ошибка сети (локально)';
     } finally {
       isSaving = false;
@@ -313,12 +307,8 @@ async function save() {
 async function loadData() {
   const localData = localStorage.getItem('tutorApp');
   if (localData) {
-    try {
-      data = JSON.parse(localData);
-    } catch (e) {
-      console.warn("Поврежденные локальные данные, сброс к начальным", e);
-      data = { students: [], lessons: [], payments: [], viewMode: 'buttons' };
-    }
+    try { data = JSON.parse(localData); } 
+    catch (e) { data = { students: [], lessons: [], payments: [], viewMode: 'buttons' }; }
   }
 
   if (isSupabaseActive && supabaseClient) {
@@ -329,13 +319,8 @@ async function loadData() {
         localStorage.setItem('tutorApp', JSON.stringify(data));
         document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
         document.getElementById('syncStatus').classList.add('active');
-      } else if (error && error.code === 'PGRST116') {
-        await supabaseClient.from('app_data').insert({ id: 'main', payload: data });
       }
-    } catch (e) {
-      console.warn("Ошибка сети Supabase, работаем локально", e);
-      document.getElementById('syncStatus').innerHTML = '💾 Локально (ошибка сети)';
-    }
+    } catch (e) { console.warn("Работаем локально", e); }
   }
 
   applyMigrations();
@@ -350,7 +335,6 @@ function setupRealtime() {
       data = payload.new.payload;
       applyMigrations();
       render();
-      document.getElementById('syncStatus').innerHTML = '☁️ Обновлено из облака';
     })
     .subscribe();
 }
@@ -373,8 +357,7 @@ function getFinancials(studentId) {
   const price = (student && student.pricePerLesson > 0) ? student.pricePerLesson : DEFAULT_PRICE;
   const totalPaid = data.payments.filter(p => p.studentId === studentId).reduce((sum, p) => sum + (p.sum !== undefined ? p.sum : (p.amount * (p.pricePerLesson || price))), 0);
   const doneCount = data.lessons.filter(l => l.studentId === studentId && l.status === 'done').length;
-  const balanceMoney = totalPaid - (doneCount * price);
-  return { balanceMoney, price, totalPaid };
+  return { balanceMoney: totalPaid - (doneCount * price), price, totalPaid };
 }
 
 function getPaidLessonIds(studentId) {
