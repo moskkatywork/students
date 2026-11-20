@@ -248,7 +248,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_UDNJqqAW5vhK_z8fm4Gmxg_oFbvyV8z';
 let supabaseClient = null;
 let isSupabaseActive = false;
 
-if (typeof window !== 'undefined' && window.supabase && SUPABASE_URL.includes('supabase.co') && SUPABASE_ANON_KEY.length > 10 && SUPABASE_ANON_KEY.startsWith('eyJ')) {
+if (typeof window !== 'undefined' && window.supabase && SUPABASE_URL.includes('supabase.co') && SUPABASE_ANON_KEY.length > 10) {
   try {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     isSupabaseActive = true;
