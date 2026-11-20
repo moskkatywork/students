@@ -2,8 +2,11 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Календарь занятий (Supabase)</title>
+<title>Календарь занятий</title>
+<!-- Подключаем библиотеку Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Заглушка для favicon, чтобы убрать ошибку 404 в консоли -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
   body { background: #f4f6f9; color: #222; padding: 20px; }
@@ -132,7 +135,7 @@
   </div>
 </div>
 
-<!-- Модалки (без изменений для краткости, они работают корректно) -->
+<!-- Модалки -->
 <div class="modal-bg" id="modalNew">
   <div class="modal">
     <h3>Новое занятие</h3>
@@ -223,7 +226,6 @@ window.onerror = function(message, source, lineno, colno, error) {
     <div style="padding:40px; max-width:600px; margin:0 auto; font-family:system-ui, sans-serif; text-align:center;">
       <h2 style="color:#dc2626;">⚠️ Произошла ошибка в приложении</h2>
       <p style="color:#666; margin:20px 0;">${message}</p>
-      <p style="color:#666; font-size:14px;">Часто это происходит из-за повреждения локальных данных браузера.</p>
       <button onclick="localStorage.removeItem('tutorApp'); location.reload();" 
         style="padding:12px 24px; background:#dc2626; color:white; border:none; border-radius:8px; cursor:pointer; font-size:16px; font-weight:600; margin-top:20px;">
         🗑 Очистить данные и перезагрузить
@@ -240,16 +242,16 @@ window.onerror = function(message, source, lineno, colno, error) {
 
 // ====== КОНФИГУРАЦИЯ SUPABASE ======
 const SUPABASE_URL = 'https://qinvqsqcaaplyfloajal.supabase.co';
-// ⚠️ ВНИМАНИЕ: Убедитесь, что это именно anon key из Settings -> API. Он должен начинаться на "eyJ..."
+// ВНИМАНИЕ: Убедитесь, что это именно anon key из Settings -> API. Он должен начинаться на "eyJ..."
 const SUPABASE_ANON_KEY = 'sb_publishable_UDNJqqAW5vhK_z8fm4Gmxg_oFbvyV8z'; 
 
-let supabase;
+// ИСПРАВЛЕНО: Используем уникальное имя переменной, чтобы избежать конфликта с window.supabase
+let supabaseClient = null;
 let isSupabaseActive = false;
 
-// ИСПРАВЛЕННАЯ ПРОВЕРКА: активируем, если URL содержит supabase.co и ключ достаточно длинный
 if (typeof window !== 'undefined' && window.supabase && SUPABASE_URL.includes('supabase.co') && SUPABASE_ANON_KEY.length > 10) {
   try {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     isSupabaseActive = true;
     document.getElementById('syncStatus').innerHTML = '☁️ Синхронизация...';
   } catch (e) {
@@ -267,11 +269,11 @@ const DEFAULT_PRICE = 35;
 
 async function save() {
   localStorage.setItem('tutorApp', JSON.stringify(data));
-  if (isSupabaseActive && !isSaving) {
+  if (isSupabaseActive && !isSaving && supabaseClient) {
     isSaving = true;
     document.getElementById('syncStatus').innerHTML = '🔄 Сохранение...';
     try {
-      await supabase.from('app_data').upsert({ id: 'main', payload: data });
+      await supabaseClient.from('app_data').upsert({ id: 'main', payload: data });
       document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
       document.getElementById('syncStatus').classList.add('active');
     } catch (e) {
@@ -294,16 +296,16 @@ async function loadData() {
     }
   }
 
-  if (isSupabaseActive) {
+  if (isSupabaseActive && supabaseClient) {
     try {
-      const { data: res, error } = await supabase.from('app_data').select('payload').eq('id', 'main').single();
+      const { data: res, error } = await supabaseClient.from('app_data').select('payload').eq('id', 'main').single();
       if (!error && res && res.payload) {
         data = res.payload;
         localStorage.setItem('tutorApp', JSON.stringify(data));
         document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
         document.getElementById('syncStatus').classList.add('active');
       } else if (error && error.code === 'PGRST116') {
-        await supabase.from('app_data').insert({ id: 'main', payload: data });
+        await supabaseClient.from('app_data').insert({ id: 'main', payload: data });
       }
     } catch (e) {
       console.warn("Ошибка сети Supabase, работаем локально", e);
@@ -317,8 +319,8 @@ async function loadData() {
 }
 
 function setupRealtime() {
-  if (!isSupabaseActive) return;
-  supabase.channel('app_data_channel')
+  if (!isSupabaseActive || !supabaseClient) return;
+  supabaseClient.channel('app_data_channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'app_data', filter: 'id=eq.main' }, (payload) => {
       data = payload.new.payload;
       applyMigrations();
