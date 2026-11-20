@@ -241,8 +241,9 @@ window.onerror = function(message, source, lineno, colno, error) {
 
 // ====== КОНФИГУРАЦИЯ SUPABASE ======
 const SUPABASE_URL = 'https://qinvqsqcaaplyfloajal.supabase.co';
-// ⚠️ ВСТАВЬТЕ СЮДА ВАШ ANON KEY (начинается на eyJ...)
-const SUPABASE_ANON_KEY = 'ВАШ_ПРАВИЛЬНЫЙ_ANON_КЛЮЧ_ЗДЕСЬ'; 
+// ВНИМАНИЕ: Убедитесь, что это именно anon key из Settings -> API. Он должен начинаться на "eyJ..."
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbnZxc3FjYWFwbHlmbG9hamFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNTQ1MzksImV4cCI6MjExMDczMDUzOX0.9-eC-zzv_zSqf3T_wiu1q0c6NJyBmwtqlqbmT47P1P4'; 
+
 
 let supabaseClient = null;
 let isSupabaseActive = false;
