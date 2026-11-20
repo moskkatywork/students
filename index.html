@@ -219,6 +219,22 @@
 </div>
 
 <script>
+ // Диагностика подключения
+if (isSupabaseActive && supabaseClient) {
+  console.log('✅ Supabase клиент создан');
+  console.log('🔑 URL:', SUPABASE_URL);
+  console.log('🔑 Ключ начинается с:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
+  
+  // Тестовый запрос
+  supabaseClient.from('app_data').select('count').then(({ data, error }) => {
+    if (error) {
+      console.error('❌ Ошибка подключения:', error.message);
+      console.error('📋 Детали:', JSON.stringify(error, null, 2));
+    } else {
+      console.log('✅ Подключение работает! Таблица доступна.');
+    }
+  });
+}
 // ====== ГЛОБАЛЬНАЯ ЗАЩИТА ОТ "БЕЛОГО ЭКРАНА" ======
 window.onerror = function(message, source, lineno, colno, error) {
   console.error("Критическая ошибка:", message, error);
