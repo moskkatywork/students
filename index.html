@@ -219,22 +219,6 @@
 </div>
 
 <script>
- // Диагностика подключения
-if (isSupabaseActive && supabaseClient) {
-  console.log('✅ Supabase клиент создан');
-  console.log('🔑 URL:', SUPABASE_URL);
-  console.log('🔑 Ключ начинается с:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
-  
-  // Тестовый запрос
-  supabaseClient.from('app_data').select('count').then(({ data, error }) => {
-    if (error) {
-      console.error('❌ Ошибка подключения:', error.message);
-      console.error('📋 Детали:', JSON.stringify(error, null, 2));
-    } else {
-      console.log('✅ Подключение работает! Таблица доступна.');
-    }
-  });
-}
 // ====== ГЛОБАЛЬНАЯ ЗАЩИТА ОТ "БЕЛОГО ЭКРАНА" ======
 window.onerror = function(message, source, lineno, colno, error) {
   console.error("Критическая ошибка:", message, error);
@@ -261,7 +245,6 @@ const SUPABASE_URL = 'https://qinvqsqcaaplyfloajal.supabase.co';
 // ВНИМАНИЕ: Убедитесь, что это именно anon key из Settings -> API. Он должен начинаться на "eyJ..."
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbnZxc3FjYWFwbHlmbG9hamFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNTQ1MzksImV4cCI6MjExMDczMDUzOX0.9-eC-zzv_zSqf3T_wiu1q0c6NJyBmwtqlqbmT47P1P4'; 
 
-// ИСПРАВЛЕНО: Используем уникальное имя переменной, чтобы избежать конфликта с window.supabase
 let supabaseClient = null;
 let isSupabaseActive = false;
 
@@ -270,6 +253,32 @@ if (typeof window !== 'undefined' && window.supabase && SUPABASE_URL.includes('s
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     isSupabaseActive = true;
     document.getElementById('syncStatus').innerHTML = '☁️ Синхронизация...';
+    
+    // ✅ ДИАГНОСТИКА ТЕПЕРЬ ЗДЕСЬ - ПОСЛЕ ИНИЦИАЛИЗАЦИИ
+    console.log('✅ Supabase клиент создан');
+    console.log('🔑 URL:', SUPABASE_URL);
+    console.log('🔑 Ключ начинается с:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
+    
+    // Тестовый запрос для проверки доступа
+    supabaseClient.from('app_data').select('count', { count: 'exact', head: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('❌ Ошибка подключения:', error.message);
+          if (error.code === 'PGRST301') {
+            console.warn('⚠️ Таблица app_data не существует! Создайте её через SQL Editor:');
+            console.warn(`CREATE TABLE IF NOT EXISTS app_data (id TEXT PRIMARY KEY, payload JSONB NOT NULL DEFAULT '{}'::jsonb);`);
+            console.warn(`ALTER TABLE app_data ENABLE ROW LEVEL SECURITY;`);
+            console.warn(`CREATE POLICY "Allow all" ON app_data FOR ALL USING (true) WITH CHECK (true);`);
+          } else if (error.code === '42501') {
+            console.error('🔒 Ошибка прав доступа (RLS). Выполните в SQL Editor:');
+            console.error(`DROP POLICY IF EXISTS "Allow all" ON app_data;`);
+            console.error(`CREATE POLICY "Allow all" ON app_data FOR ALL USING (true) WITH CHECK (true);`);
+          }
+        } else {
+          console.log('✅ Подключение работает! Таблица доступна.');
+        }
+      });
+      
   } catch (e) {
     console.error("Ошибка инициализации Supabase:", e);
   }
