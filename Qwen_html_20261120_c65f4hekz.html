@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Календарь занятий (Supabase)</title>
+<!-- Подключаем библиотеку Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { background: #f4f6f9; color: #222; padding: 20px; }
+  .app { max-width: 1100px; margin: 0 auto; }
+  h1 { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+  .sync-status { font-size: 14px; font-weight: 400; color: #666; display: flex; align-items: center; gap: 5px; }
+  .sync-status.active { color: #16a34a; }
+
+  .students { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .view-toggle { display: flex; gap: 5px; margin-bottom: 10px; }
+  .view-toggle button { padding: 8px 14px; border: 1px solid #d0d7de; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: 0.15s; }
+  .view-toggle button.active { background: #4f46e5; color: white; border-color: #4f46e5; }
+  
+  .students-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+  .student-btn { padding: 10px 18px; border: 2px solid #d0d7de; background: white; border-radius: 10px; cursor: pointer; font-weight: 500; position: relative; flex: 1; min-width: 150px; text-align: left; }
+  .student-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; }
+  .student-btn.all-students { background: #8b5cf6; color: white; border-color: #8b5cf6; flex: 0 0 auto; }
+  .student-btn.all-students.active { background: #7c3aed; border-color: #7c3aed; }
+  .student-btn .balance { display: block; font-size: 12px; margin-top: 2px; font-weight: 600; }
+  .student-btn .price-tag { display: block; font-size: 10px; opacity: 0.7; margin-top: 2px; }
+  .student-btn .edit-student { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(0,0,0,0.1); color: inherit; cursor: pointer; font-size: 12px; opacity: 0; transition: 0.15s; display: flex; align-items: center; justify-content: center; }
+  .student-btn:hover .edit-student { opacity: 1; }
+  
+  .student-dropdown { width: 100%; padding: 12px; border: 2px solid #d0d7de; border-radius: 10px; font-size: 16px; background: white; cursor: pointer; }
+  .student-dropdown:focus { outline: none; border-color: #4f46e5; }
+
+  .add-student { padding: 10px 18px; border: 2px dashed #aaa; background: transparent; border-radius: 10px; cursor: pointer; font-weight: 500; color: #555; }
+  .add-student:hover { border-color: #4f46e5; color: #4f46e5; }
+
+  .info-bar { background: white; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+  .balance-big { font-size: 20px; font-weight: 600; }
+  .balance-big.positive { color: #16a34a; }
+  .balance-big.negative { color: #dc2626; }
+  .balance-big.zero { color: #666; }
+
+  .stats-row { display: flex; gap: 15px; flex-wrap: wrap; }
+  .stat-item { text-align: center; padding: 6px 12px; background: #f4f6f9; border-radius: 6px; }
+  .stat-item .label { font-size: 11px; color: #666; }
+  .stat-item .value { font-size: 16px; font-weight: 600; }
+  .stat-item.paid .value { color: #16a34a; }
+  .stat-item.unpaid .value { color: #dc2626; }
+  .stat-item.planned .value { color: #3b82f6; }
+  .stat-item.money .value { color: #f59e0b; }
+
+  .calendar { background: white; border-radius: 10px; padding: 20px; }
+  .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+  .cal-header button { padding: 6px 14px; border: 1px solid #d0d7de; background: white; border-radius: 6px; cursor: pointer; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-day-name { text-align: center; font-weight: 600; padding: 8px; color: #666; font-size: 13px; }
+  .cal-day { min-height: 110px; border: 1px solid #eee; border-radius: 6px; padding: 6px; cursor: pointer; background: #fafbfc; transition: 0.15s; position: relative; }
+  .cal-day:hover { background: #eef2ff; }
+  .cal-day.other-month { opacity: 0.35; }
+  .cal-day.today { border-color: #4f46e5; background: #eef2ff; }
+  .cal-day .date-num { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .cal-day .day-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
+  .cal-day .day-actions button { width: 20px; height: 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; opacity: 0; transition: 0.15s; }
+  .cal-day:hover .day-actions button { opacity: 1; }
+  .cal-day .day-actions .btn-add-lesson { background: #3b82f6; color: white; }
+  .cal-day .day-actions .btn-add-payment { background: #f59e0b; color: white; }
+  .lesson { font-size: 11px; padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; color: white; cursor: pointer; position: relative; }
+  .lesson.planned { background: #3b82f6; }
+  .lesson.done { background: #16a34a; }
+  .lesson.canceled { background: #9ca3af; text-decoration: line-through; }
+  .lesson .student-name { display: block; font-size: 9px; opacity: 0.9; margin-top: 1px; }
+  
+  .lesson .paid-mark { position: absolute; top: -3px; right: -3px; font-size: 9px; background: #fbbf24; border-radius: 50%; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border: 1px solid white; }
+  .lesson .unpaid-mark { position: absolute; top: -3px; right: -3px; font-size: 9px; background: #dc2626; color: white; border-radius: 50%; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border: 1px solid white; font-weight: 700; }
+  
+  .payment-indicator { font-size: 11px; padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; background: #fbbf24; color: #78350f; cursor: pointer; font-weight: 500; }
+
+  .legend { display: flex; gap: 15px; margin-top: 15px; padding: 10px; background: #f4f6f9; border-radius: 6px; flex-wrap: wrap; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-bg.show { display: flex; }
+  .modal { background: white; padding: 25px; border-radius: 12px; width: 500px; max-width: 95%; max-height: 90vh; overflow-y: auto; }
+  .modal h3 { margin-bottom: 15px; }
+  .modal label { display: block; margin-top: 12px; font-size: 13px; color: #555; font-weight: 500; }
+  .modal input, .modal select, .modal textarea { width: 100%; padding: 8px 10px; border: 1px solid #d0d7de; border-radius: 6px; margin-top: 4px; font-size: 14px; }
+  .modal textarea { min-height: 60px; resize: vertical; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+  .btn { padding: 9px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px; }
+  .btn-primary { background: #4f46e5; color: white; }
+  .btn-success { background: #16a34a; color: white; }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-warning { background: #f59e0b; color: white; }
+  .btn-ghost { background: #eee; color: #333; }
+  .btn:hover { opacity: 0.9; }
+
+  .grades-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 5px; }
+  .grades-grid input { text-align: center; }
+
+  .payment-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .total-display { margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 6px; text-align: center; }
+  .total-display .label { font-size: 12px; color: #78350f; }
+  .total-display .value { font-size: 22px; font-weight: 700; color: #92400e; }
+
+  .payments-list { margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px; }
+  .payment-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #fef3c7; border-radius: 6px; margin-bottom: 6px; }
+  .payment-item .info { flex: 1; }
+  .payment-item .amount { font-weight: 600; color: #92400e; }
+  .payment-item .sum { font-size: 12px; color: #78350f; }
+  .payment-item .delete { background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>📅 Календарь занятий <span id="syncStatus" class="sync-status">💾 Локально</span></h1>
+
+  <div class="students" id="studentsList"></div>
+
+  <div class="info-bar">
+    <div>
+      <div style="color:#666; font-size:13px;" id="currentLabel">Текущий ученик</div>
+      <div id="currentStudentName" style="font-size:18px; font-weight:600;">—</div>
+    </div>
+    <div id="statsContainer"></div>
+  </div>
+
+  <div class="calendar">
+    <div class="cal-header">
+      <button onclick="changeMonth(-1)">← Назад</button>
+      <div id="monthLabel" style="font-size:18px; font-weight:600;"></div>
+      <button onclick="changeMonth(1)">Вперёд →</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<!-- Модалка: новое занятие -->
+<div class="modal-bg" id="modalNew">
+  <div class="modal">
+    <h3>Новое занятие</h3>
+    <label>Ученик</label>
+    <select id="newStudentSelect"></select>
+    <label>Время (ЧЧ:ММ)</label>
+    <input type="time" id="newTime" value="18:00">
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveNewLesson()">Создать</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalNew')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка: оплата -->
+<div class="modal-bg" id="modalPayment">
+  <div class="modal">
+    <h3>💰 Внесение оплаты</h3>
+    <label>Ученик</label>
+    <select id="payStudentSelect"></select>
+    <label>Дата оплаты</label>
+    <input type="date" id="payDate">
+    <div class="payment-row">
+      <div>
+        <label>Внесенная сумма (руб)</label>
+        <input type="number" id="paySum" value="" min="0" step="1" placeholder="0">
+      </div>
+      <div>
+        <label>Стоимость занятия (руб)</label>
+        <input type="number" id="payPrice" value="35" min="1" step="1">
+      </div>
+    </div>
+    <div id="paymentBreakdown" style="margin-top: 15px;"></div>
+    <div class="total-display">
+      <div class="label">Будет зачислено занятий</div>
+      <div class="value" id="payTotalLessons">0</div>
+    </div>
+    <label>Комментарий (необязательно)</label>
+    <input type="text" id="payComment" placeholder="Например: оплата за октябрь">
+    <div class="modal-actions">
+      <button class="btn btn-warning" onclick="savePayment()">Сохранить оплату</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalPayment')">Отмена</button>
+    </div>
+    <div class="payments-list" id="paymentsList"></div>
+  </div>
+</div>
+
+<!-- Модалка: действие с занятием -->
+<div class="modal-bg" id="modalLesson">
+  <div class="modal">
+    <h3 id="lessonTitle">Занятие</h3>
+    <div id="lessonInfo" style="color:#666; margin-bottom:10px;"></div>
+    <div id="cancelBlock" style="display:none;">
+      <label style="display:flex; align-items:center; gap:8px; margin-bottom: 12px; cursor:pointer; background:#fef3c7; padding:10px; border-radius:6px; border: 1px solid #fcd34d;">
+        <input type="checkbox" id="cancelCharge" style="width:18px; height:18px; cursor:pointer; accent-color: #f59e0b;">
+        <span style="font-weight:600; color:#92400e; font-size: 14px;">💰 Удержать оплату (списать с баланса)</span>
+      </label>
+      <label>Причина отмены</label>
+      <select id="cancelReason">
+        <option value="Болезнь ученика">Болезнь ученика</option>
+        <option value="Болезнь преподавателя">Болезнь преподавателя</option>
+        <option value="Не предупредил">Не предупредил</option>
+        <option value="Семейные обстоятельства">Семейные обстоятельства</option>
+        <option value="Перенос на другую дату">Перенос на другую дату</option>
+        <option value="other">Другое…</option>
+      </select>
+      <textarea id="cancelReasonText" placeholder="Укажите причину" style="display:none; margin-top:8px;"></textarea>
+    </div>
+    <div class="modal-actions" id="lessonActions"></div>
+  </div>
+</div>
+
+<!-- Модалка: данные ученика -->
+<div class="modal-bg" id="modalStudentDetails">
+  <div class="modal">
+    <h3 id="studentModalTitle">Данные ученика</h3>
+    <input type="hidden" id="editStudentId">
+    <label>Имя и Фамилия</label>
+    <input type="text" id="sdName" placeholder="Например, Иван Иванов">
+    <label>Номер класса</label>
+    <input type="text" id="sdClass" placeholder="Например, 9">
+    <label>Стоимость занятия (руб)</label>
+    <input type="number" id="sdPrice" value="35" min="1" step="1">
+    <label style="margin-top:18px; font-weight:600; color:#333;">📊 Оценки</label>
+    <div class="grades-grid">
+      <div><label>Прошлый год</label><input type="text" id="sdGradeLast" placeholder="-"></div>
+      <div><label>Текущий год</label><input type="text" id="sdGradeCurrent" placeholder="-"></div>
+      <div><label>1 четверть</label><input type="text" id="sdGradeQ1" placeholder="-"></div>
+      <div><label>2 четверть</label><input type="text" id="sdGradeQ2" placeholder="-"></div>
+      <div><label>3 четверть</label><input type="text" id="sdGradeQ3" placeholder="-"></div>
+      <div><label>4 четверть</label><input type="text" id="sdGradeQ4" placeholder="-"></div>
+    </div>
+    <label style="margin-top:18px;">🎯 Примечание / Цель занятий</label>
+    <textarea id="sdGoal" placeholder="Например: подготовка к ОГЭ"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveStudentDetails()">Сохранить</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalStudentDetails')">Отмена</button>
+      <button class="btn btn-danger" id="btnDeleteStudent" style="display:none; margin-left:auto;" onclick="deleteStudent()">Удалить ученика</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====== КОНФИГУРАЦИЯ SUPABASE ======
+// ВСТАВЬТЕ СЮДА ВАШИ ДАННЫЕ ИЗ SUPABASE DASHBOARD
+const SUPABASE_URL = 'https://qinvqsqcaaplyfloajal.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_UDNJqqAW5vhK_z8fm4Gmxg_oFbvyV8z';
+
+let supabase;
+let isSupabaseActive = false;
+
+if (SUPABASE_URL !== 'https://qinvqsqcaaplyfloajal.supabase.co' && window.supabase) {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  isSupabaseActive = true;
+  document.getElementById('syncStatus').innerHTML = '☁️ Синхронизация...';
+}
+
+// ====== Хранилище ======
+let data = { students: [], lessons: [], payments: [], viewMode: 'buttons' };
+let currentStudentId = 'all';
+let currentDate = new Date();
+let selectedDate = null;
+let selectedLessonId = null;
+let isSaving = false;
+
+const DEFAULT_PRICE = 35;
+
+// ====== Функции сохранения и загрузки ======
+async function save() {
+  // 1. Всегда сохраняем локально для мгновенного отклика и работы офлайн
+  localStorage.setItem('tutorApp', JSON.stringify(data));
+  
+  // 2. Если Supabase настроен, отправляем данные в облако
+  if (isSupabaseActive && !isSaving) {
+    isSaving = true;
+    document.getElementById('syncStatus').innerHTML = '🔄 Сохранение...';
+    try {
+      await supabase.from('app_data').upsert({ id: 'main', payload: data });
+      document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
+      document.getElementById('syncStatus').classList.add('active');
+    } catch (e) {
+      console.error("Ошибка сохранения в Supabase:", e);
+      document.getElementById('syncStatus').innerHTML = '⚠️ Ошибка сети (сохранено локально)';
+    } finally {
+      isSaving = false;
+    }
+  }
+}
+
+async function loadData() {
+  // 1. Загружаем локальные данные для мгновенного отображения
+  const localData = localStorage.getItem('tutorApp');
+  if (localData) {
+    data = JSON.parse(localData);
+  }
+
+  // 2. Пытаемся получить актуальные данные из облака
+  if (isSupabaseActive) {
+    try {
+      const { data: res, error } = await supabase.from('app_data').select('payload').eq('id', 'main').single();
+      if (!error && res && res.payload) {
+        data = res.payload;
+        localStorage.setItem('tutorApp', JSON.stringify(data)); // Обновляем локальную копию
+        document.getElementById('syncStatus').innerHTML = '☁️ Синхронизировано';
+        document.getElementById('syncStatus').classList.add('active');
+      } else if (error && error.code === 'PGRST116') {
+        // Запись не существует, создаем её из локальных данных
+        await supabase.from('app_data').insert({ id: 'main', payload: data });
+      }
+    } catch (e) {
+      console.warn("Ошибка загрузки из Supabase, используем локальные данные", e);
+      document.getElementById('syncStatus').innerHTML = '💾 Локально (ошибка сети)';
+    }
+  }
+
+  applyMigrations();
+  render();
+  setupRealtime();
+}
+
+// Настройка прослушивания изменений в реальном времени (если открыто в двух вкладках)
+function setupRealtime() {
+  if (!isSupabaseActive) return;
+  
+  supabase.channel('app_data_channel')
+    .on('postgres_changes', 
+      { event: '*', schema: 'public', table: 'app_data', filter: 'id=eq.main' }, 
+      (payload) => {
+        console.log('Получены обновления из облака');
+        data = payload.new.payload;
+        applyMigrations();
+        render();
+        document.getElementById('syncStatus').innerHTML = '☁️ Обновлено из облака';
+      }
+    )
+    .subscribe();
+}
+
+function applyMigrations() {
+  if (!data.students) data.students = [];
+  if (!data.lessons) data.lessons = [];
+  if (!data.payments) data.payments = [];
+  if (!data.viewMode) data.viewMode = 'buttons';
+
+  data.students.forEach(s => {
+    if (s.pricePerLesson === undefined || s.pricePerLesson <= 0) s.pricePerLesson = DEFAULT_PRICE;
+    if (!s.className) s.className = '';
+    if (!s.grades) s.grades = { lastYear: '', currentYear: '', q1: '', q2: '', q3: '', q4: '' };
+    if (!s.goalNote) s.goalNote = '';
+  });
+}
+
+// ====== Финансы ученика ======
+function getFinancials(studentId) {
+  const student = data.students.find(s => s.id === studentId);
+  const price = (student && student.pricePerLesson > 0) ? student.pricePerLesson : DEFAULT_PRICE;
+  
+  const totalPaid = data.payments.filter(p => p.studentId === studentId).reduce((sum, p) => {
+    return sum + (p.sum !== undefined ? p.sum : (p.amount * (p.pricePerLesson || price)));
+  }, 0);
+  
+  const doneCount = data.lessons.filter(l => l.studentId === studentId && l.status === 'done').length;
+  const totalCost = doneCount * price;
+  const balanceMoney = totalPaid - totalCost;
+  
+  const paidLessons = data.payments.filter(p => p.studentId === studentId).reduce((count, p) => {
+    const pPrice = p.pricePerLesson || price;
+    const pSum = p.sum !== undefined ? p.sum : (p.amount * pPrice);
+    return count + Math.floor(pSum / pPrice);
+  }, 0);
+  
+  return { balanceMoney, price, totalPaid, totalCost };
+}
+
+// ====== Определение оплаченных занятий (FIFO) ======
+function getPaidLessonIds(studentId) {
+  const lessons = data.lessons.filter(l => 
+    l.studentId === studentId && 
+    (l.status === 'done' || l.status === 'planned' || (l.status === 'canceled' && l.chargeForCancel))
+  ).sort((a, b) => {
+    const da = new Date(a.date + 'T00:00:00').getTime();
+    const db = new Date(b.date + 'T00:00:00').getTime();
+    if (da !== db) return da - db;
+    return a.time.localeCompare(b.time);
+  });
+
+  const currentPrice = (data.students.find(s => s.id === studentId)?.pricePerLesson) || DEFAULT_PRICE;
+
+  const totalFullyPaidLessons = data.payments
+    .filter(p => p.studentId === studentId)
+    .reduce((count, p) => {
+      const pPrice = p.pricePerLesson || currentPrice;
+      const pSum = p.sum !== undefined ? p.sum : (p.amount * pPrice);
+      return count + Math.floor(pSum / pPrice);
+    }, 0);
+
+  const paid = new Set();
+  for (let i = 0; i < Math.min(lessons.length, totalFullyPaidLessons); i++) {
+    paid.add(lessons[i].id);
+  }
+  return paid;
+}
+
+let paidCache = {};
+function rebuildPaidCache() {
+  paidCache = {};
+  data.students.forEach(s => { paidCache[s.id] = getPaidLessonIds(s.id); });
+}
+
+function isLessonPaid(lesson) {
+  if (lesson.status === 'canceled' && !lesson.chargeForCancel) return null;
+  return paidCache[lesson.studentId] && paidCache[lesson.studentId].has(lesson.id);
+}
+
+// ====== Переключение режима отображения ======
+function setViewMode(mode) {
+  data.viewMode = mode;
+  save();
+  render();
+}
+
+// ====== Рендер списка учеников ======
+function renderStudents() {
+  const list = document.getElementById('studentsList');
+  list.innerHTML = '';
+  
+  const toggleDiv = document.createElement('div');
+  toggleDiv.className = 'view-toggle';
+  toggleDiv.innerHTML = `
+    <button class="${data.viewMode === 'buttons' ? 'active' : ''}" onclick="setViewMode('buttons')">🔘 Кнопки</button>
+    <button class="${data.viewMode === 'dropdown' ? 'active' : ''}" onclick="setViewMode('dropdown')">▼ Список</button>
+  `;
+  list.appendChild(toggleDiv);
+
+  if (data.viewMode === 'dropdown') {
+    const select = document.createElement('select');
+    select.className = 'student-dropdown';
+    select.onchange = (e) => { currentStudentId = e.target.value; render(); };
+
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all';
+    allOpt.textContent = '👥 Все ученики';
+    if (currentStudentId === 'all') allOpt.selected = true;
+    select.appendChild(allOpt);
+
+    data.students.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${s.name} (${s.className || 'без класса'})`;
+      if (s.id === currentStudentId) opt.selected = true;
+      select.appendChild(opt);
+    });
+    list.appendChild(select);
+
+    if (currentStudentId !== 'all') {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-ghost';
+      editBtn.style.marginTop = '5px';
+      editBtn.textContent = '✏️ Редактировать данные этого ученика';
+      editBtn.onclick = () => openEditStudentModal(currentStudentId);
+      list.appendChild(editBtn);
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'add-student';
+    addBtn.textContent = '+ Добавить нового ученика';
+    addBtn.onclick = () => openNewStudentModal();
+    list.appendChild(addBtn);
+
+  } else {
+    const grid = document.createElement('div');
+    grid.className = 'students-grid';
+    
+    const allBtn = document.createElement('button');
+    allBtn.className = 'student-btn all-students' + (currentStudentId === 'all' ? ' active' : '');
+    allBtn.innerHTML = `👥 Все ученики<span class="balance" style="color:#8b5cf6">${data.students.length} чел.</span>`;
+    allBtn.onclick = () => { currentStudentId = 'all'; render(); };
+    grid.appendChild(allBtn);
+    
+    data.students.forEach(s => {
+      const fin = getFinancials(s.id);
+      const balText = fin.balanceMoney >= 0 ? `+${fin.balanceMoney} ₽ (депозит)` : `${fin.balanceMoney} ₽ (долг)`;
+      const balColor = fin.balanceMoney >= 0 ? '#16a34a' : '#dc2626';
+      
+      const btn = document.createElement('button');
+      btn.className = 'student-btn' + (s.id === currentStudentId ? ' active' : '');
+      btn.innerHTML = `${s.name} <span style="font-size:11px; opacity:0.7">${s.className ? s.className + ' кл.' : ''}</span>
+        <span class="balance" style="color: ${balColor}">${balText}</span>
+        <span class="price-tag">${s.pricePerLesson} ₽/зан</span>`;
+      btn.onclick = () => { currentStudentId = s.id; render(); };
+      
+      const editBtn = document.createElement('button');
+      editBtn.className = 'edit-student';
+      editBtn.textContent = '✎';
+      editBtn.title = 'Редактировать данные ученика';
+      editBtn.onclick = (e) => { e.stopPropagation(); openEditStudentModal(s.id); };
+      btn.appendChild(editBtn);
+      
+      grid.appendChild(btn);
+    });
+    list.appendChild(grid);
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'add-student';
+    addBtn.textContent = '+ Добавить ученика';
+    addBtn.onclick = () => openNewStudentModal();
+    list.appendChild(addBtn);
+  }
+}
+
+// ====== Рендер календаря ======
+function renderCalendar() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  document.getElementById('monthLabel').textContent = `${monthNames[month]} ${year}`;
+
+  ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'cal-day-name';
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+
+  const firstDay = new Date(year, month, 1);
+  let startOffset = firstDay.getDay() - 1;
+  if (startOffset < 0) startOffset = 6;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevDays = new Date(year, month, 0).getDate();
+  const today = new Date();
+
+  for (let i = startOffset; i > 0; i--) {
+    grid.appendChild(makeDayCell(prevDays - i + 1, true, new Date(year, month - 1, prevDays - i + 1)));
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const isToday = date.toDateString() === today.toDateString();
+    grid.appendChild(makeDayCell(d, false, date, isToday));
+  }
+  const totalCells = startOffset + daysInMonth;
+  const tail = (7 - totalCells % 7) % 7;
+  for (let i = 1; i <= tail; i++) {
+    grid.appendChild(makeDayCell(i, true, new Date(year, month + 1, i)));
+  }
+
+  renderLegend();
+}
+
+function renderLegend() {
+  const legend = document.getElementById('legend');
+  if (currentStudentId === 'all') {
+    legend.innerHTML = `
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Запланировано</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>Проведено</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#9ca3af"></div>Отменено</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24; border-radius:50%"></div>💰 Оплачено</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#dc2626; border-radius:50%; color:white; font-size:9px; display:flex; align-items:center; justify-content:center; font-weight:700;">!</div>Не оплачено</div>
+    `;
+  } else {
+    legend.innerHTML = `
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Запланировано</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>Проведено</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#9ca3af"></div>Отменено</div>
+    `;
+  }
+}
+
+function makeDayCell(dayNum, otherMonth, date, isToday = false) {
+  const cell = document.createElement('div');
+  cell.className = 'cal-day' + (otherMonth ? ' other-month' : '') + (isToday ? ' today' : '');
+  const dateStr = date.toISOString().slice(0, 10);
+  cell.innerHTML = `<div class="date-num">${dayNum}</div>`;
+  
+  if (!otherMonth) {
+    if (currentStudentId !== 'all') {
+      const actions = document.createElement('div');
+      actions.className = 'day-actions';
+      const btnLesson = document.createElement('button');
+      btnLesson.className = 'btn-add-lesson'; btnLesson.textContent = '+'; btnLesson.title = 'Добавить занятие';
+      btnLesson.onclick = (e) => { e.stopPropagation(); selectedDate = date; openModal('modalNew'); };
+      actions.appendChild(btnLesson);
+      const btnPayment = document.createElement('button');
+      btnPayment.className = 'btn-add-payment'; btnPayment.textContent = '💰'; btnPayment.title = 'Внести оплату';
+      btnPayment.onclick = (e) => { e.stopPropagation(); openPaymentModal(date); };
+      actions.appendChild(btnPayment);
+      cell.appendChild(actions);
+    }
+    
+    let dayLessons = currentStudentId === 'all' 
+      ? data.lessons.filter(l => new Date(l.date).toISOString().slice(0, 10) === dateStr)
+      : data.lessons.filter(l => l.studentId === currentStudentId && new Date(l.date).toISOString().slice(0, 10) === dateStr);
+    
+    dayLessons.sort((a, b) => a.time.localeCompare(b.time));
+    
+    dayLessons.forEach(l => {
+      const el = document.createElement('div');
+      el.className = 'lesson ' + l.status;
+      const student = data.students.find(s => s.id === l.studentId);
+      let content = `${l.time}`;
+      if (currentStudentId === 'all') content += `<span class="student-name">${student ? student.name : 'Неизвестный'}</span>`;
+      el.innerHTML = content;
+      
+      if (l.status === 'done' || l.status === 'planned') {
+        const paid = isLessonPaid(l);
+        if (paid === true) {
+          const mark = document.createElement('span'); 
+          mark.className = 'paid-mark'; 
+          mark.textContent = '💰'; 
+          mark.title = l.status === 'done' ? 'Оплачено' : 'Есть предоплата'; 
+          if (l.status === 'planned') mark.style.background = '#60a5fa';
+          el.appendChild(mark);
+        } else if (paid === false) {
+          const mark = document.createElement('span'); 
+          mark.className = 'unpaid-mark'; 
+          mark.textContent = '!'; 
+          mark.title = l.status === 'done' ? 'Не оплачено (долг)' : 'Нет предоплаты'; 
+          el.appendChild(mark);
+        }
+      } else if (l.status === 'canceled' && l.chargeForCancel) {
+        const mark = document.createElement('span');
+        mark.className = 'paid-mark';
+        mark.textContent = '💰';
+        mark.title = 'Оплата удержана при отмене';
+        mark.style.background = '#f59e0b';
+        el.appendChild(mark);
+      }
+      
+      el.onclick = (e) => { e.stopPropagation(); openLessonModal(l.id); };
+      cell.appendChild(el);
+    });
+    
+    if (currentStudentId !== 'all') {
+      data.payments.filter(p => p.studentId === currentStudentId && p.date === dateStr).forEach(p => {
+        const el = document.createElement('div');
+        el.className = 'payment-indicator';
+        const sum = p.sum !== undefined ? p.sum : (p.amount * (p.pricePerLesson || DEFAULT_PRICE));
+        el.textContent = `💰 ${sum} ₽`;
+        el.onclick = (e) => { e.stopPropagation(); openPaymentModal(date); };
+        cell.appendChild(el);
+      });
+    }
+  }
+  return cell;
+}
+
+// ====== Модалки ======
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function openNewStudentModal() {
+  document.getElementById('studentModalTitle').textContent = 'Новый ученик';
+  document.getElementById('editStudentId').value = '';
+  document.getElementById('sdName').value = '';
+  document.getElementById('sdClass').value = '';
+  document.getElementById('sdPrice').value = DEFAULT_PRICE;
+  document.getElementById('sdGradeLast').value = '';
+  document.getElementById('sdGradeCurrent').value = '';
+  document.getElementById('sdGradeQ1').value = '';
+  document.getElementById('sdGradeQ2').value = '';
+  document.getElementById('sdGradeQ3').value = '';
+  document.getElementById('sdGradeQ4').value = '';
+  document.getElementById('sdGoal').value = '';
+  document.getElementById('btnDeleteStudent').style.display = 'none';
+  openModal('modalStudentDetails');
+}
+
+function openEditStudentModal(studentId) {
+  const s = data.students.find(x => x.id === studentId);
+  if (!s) return;
+  document.getElementById('studentModalTitle').textContent = 'Редактировать ученика';
+  document.getElementById('editStudentId').value = s.id;
+  document.getElementById('sdName').value = s.name;
+  document.getElementById('sdClass').value = s.className || '';
+  document.getElementById('sdPrice').value = s.pricePerLesson;
+  document.getElementById('sdGradeLast').value = s.grades?.lastYear || '';
+  document.getElementById('sdGradeCurrent').value = s.grades?.currentYear || '';
+  document.getElementById('sdGradeQ1').value = s.grades?.q1 || '';
+  document.getElementById('sdGradeQ2').value = s.grades?.q2 || '';
+  document.getElementById('sdGradeQ3').value = s.grades?.q3 || '';
+  document.getElementById('sdGradeQ4').value = s.grades?.q4 || '';
+  document.getElementById('sdGoal').value = s.goalNote || '';
+  document.getElementById('btnDeleteStudent').style.display = 'block';
+  openModal('modalStudentDetails');
+}
+
+function saveStudentDetails() {
+  const id = document.getElementById('editStudentId').value;
+  const name = document.getElementById('sdName').value.trim();
+  if (!name) return alert('Введите имя ученика');
+
+  const studentData = {
+    name: name,
+    className: document.getElementById('sdClass').value.trim(),
+    pricePerLesson: parseInt(document.getElementById('sdPrice').value) || DEFAULT_PRICE,
+    grades: {
+      lastYear: document.getElementById('sdGradeLast').value.trim(),
+      currentYear: document.getElementById('sdGradeCurrent').value.trim(),
+      q1: document.getElementById('sdGradeQ1').value.trim(),
+      q2: document.getElementById('sdGradeQ2').value.trim(),
+      q3: document.getElementById('sdGradeQ3').value.trim(),
+      q4: document.getElementById('sdGradeQ4').value.trim(),
+    },
+    goalNote: document.getElementById('sdGoal').value.trim()
+  };
+
+  if (id) {
+    const idx = data.students.findIndex(x => x.id === id);
+    if (idx !== -1) data.students[idx] = { ...data.students[idx], ...studentData };
+  } else {
+    studentData.id = Date.now().toString();
+    data.students.push(studentData);
+    currentStudentId = studentData.id;
+  }
+  save();
+  closeModal('modalStudentDetails');
+  render();
+}
+
+function deleteStudent() {
+  const id = document.getElementById('editStudentId').value;
+  if (confirm('Удалить ученика и ВСЕ его занятия и оплаты? Это действие нельзя отменить.')) {
+    data.students = data.students.filter(x => x.id !== id);
+    data.lessons = data.lessons.filter(x => x.studentId !== id);
+    data.payments = data.payments.filter(x => x.studentId !== id);
+    if (currentStudentId === id) currentStudentId = 'all';
+    save();
+    closeModal('modalStudentDetails');
+    render();
+  }
+}
+
+function saveNewLesson() {
+  const studentId = document.getElementById('newStudentSelect').value;
+  const time = document.getElementById('newTime').value;
+  data.lessons.push({ id: Date.now().toString(), studentId, date: selectedDate.toISOString(), time, status: 'planned', cancelReason: null, chargeForCancel: false });
+  save(); closeModal('modalNew'); render();
+}
+
+function updatePaymentBreakdown() {
+  const studentId = document.getElementById('payStudentSelect').value;
+  const sum = parseFloat(document.getElementById('paySum').value) || 0;
+  const price = parseFloat(document.getElementById('payPrice').value) || 35;
+
+  const student = data.students.find(s => s.id === studentId);
+  if (!student || price <= 0) return;
+
+  const currentFin = getFinancials(studentId);
+  const currentBalText = currentFin.balanceMoney >= 0 ? `+${currentFin.balanceMoney} ₽` : `${currentFin.balanceMoney} ₽`;
+  const balColor = currentFin.balanceMoney >= 0 ? '#16a34a' : '#dc2626';
+
+  const paidIds = getPaidLessonIds(studentId);
+
+  const unpaidDoneLessons = data.lessons
+    .filter(l => l.studentId === studentId && l.status === 'done' && !paidIds.has(l.id))
+    .sort((a, b) => new Date(a.date + 'T00:00:00').getTime() - new Date(b.date + 'T00:00:00').getTime() || a.time.localeCompare(b.time));
+
+  const unpaidPlannedLessons = data.lessons
+    .filter(l => l.studentId === studentId && l.status === 'planned' && !paidIds.has(l.id))
+    .sort((a, b) => new Date(a.date + 'T00:00:00').getTime() - new Date(b.date + 'T00:00:00').getTime() || a.time.localeCompare(b.time));
+
+  let remainingSum = sum;
+  const coveredPast = [];
+  const coveredFuture = [];
+
+  for (const lesson of unpaidDoneLessons) {
+    if (remainingSum >= price) {
+      remainingSum -= price;
+      coveredPast.push(lesson);
+    } else { break; }
+  }
+
+  for (const lesson of unpaidPlannedLessons) {
+    if (remainingSum >= price) {
+      remainingSum -= price;
+      coveredFuture.push(lesson);
+    } else { break; }
+  }
+
+  const deposit = remainingSum;
+  const totalCovered = coveredPast.length + coveredFuture.length;
+  const newBalance = currentFin.balanceMoney + sum;
+
+  let html = '<div style="background:#f8fafc; padding:15px; border-radius:8px; border:1px solid #e2e8f0; font-size: 13px; line-height: 1.5;">';
+  html += `<div style="margin-bottom:10px; font-size:12px; color:#64748b; display:flex; justify-content:space-between; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+    <span>Баланс до оплаты:</span> <span style="color:${balColor}; font-weight:700;">${currentBalText}</span>
+  </div>`;
+  html += `<div style="margin-bottom:12px; font-weight:700; color:#0f172a; font-size:16px; display:flex; justify-content:space-between; align-items:center;">
+    <span>💵 Внесено:</span> <span>${sum} ₽</span>
+  </div>`;
+
+  if (sum > 0) {
+    if (coveredPast.length > 0) {
+      const dates = coveredPast.map(l => new Date(l.date + 'T00:00:00').toLocaleDateString('ru-RU')).join(', ');
+      html += `<div style="color:#dc2626; margin-bottom:6px; display:flex; justify-content:space-between; align-items:flex-start;">
+        <span>🔴 Погашение долга <span style="font-size:11px; color:#666;">(${dates})</span>:</span>
+        <span style="font-weight:600; text-align:right;">${coveredPast.length} зан.<br><span style="font-size:11px; color:#999;">${(coveredPast.length * price)} ₽</span></span>
+      </div>`;
+    } else if (unpaidDoneLessons.length > 0) {
+      html += `<div style="color:#94a3b8; margin-bottom:6px; display:flex; justify-content:space-between; font-size:12px;">
+        <span>⚪ Прошлые неоплаченные:</span> <span>${unpaidDoneLessons.length} зан. (не хватило суммы)</span>
+      </div>`;
+    }
+
+    if (coveredFuture.length > 0) {
+      const dates = coveredFuture.map(l => new Date(l.date + 'T00:00:00').toLocaleDateString('ru-RU')).join(', ');
+      html += `<div style="color:#3b82f6; margin-bottom:6px; display:flex; justify-content:space-between; align-items:flex-start;">
+        <span>🔵 Аванс за запланированные <span style="font-size:11px; color:#666;">(${dates})</span>:</span>
+        <span style="font-weight:600; text-align:right;">${coveredFuture.length} зан.<br><span style="font-size:11px; color:#999;">${(coveredFuture.length * price)} ₽</span></span>
+      </div>`;
+    } else if (unpaidPlannedLessons.length > 0) {
+      html += `<div style="color:#94a3b8; margin-bottom:6px; display:flex; justify-content:space-between; font-size:12px;">
+        <span>⚪ Запланированные:</span> <span>${unpaidPlannedLessons.length} зан. (не хватило суммы)</span>
+      </div>`;
+    }
+
+    if (deposit > 0) {
+      html += `<div style="color:#16a34a; font-weight:600; margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; display:flex; justify-content:space-between;">
+        <span>🟢 Остаток на депозите:</span> <span>${deposit} ₽</span>
+      </div>`;
+    } else if (totalCovered > 0 && deposit === 0) {
+      html += `<div style="color:#16a34a; margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; font-size:12px;">🟢 Сумма распределена полностью</div>`;
+    }
+  } else {
+     html += `<div style="color:#94a3b8; margin-top:8px; font-size:12px;">Введите сумму для расчета</div>`;
+  }
+
+  html += `<div style="margin-top:12px; padding-top:10px; border-top:2px solid #e2e8f0; font-weight:700; color:#0f172a; font-size:15px; display:flex; justify-content:space-between;">
+    <span>Новый баланс:</span> <span style="color:${newBalance >= 0 ? '#16a34a' : '#dc2626'}">${newBalance >= 0 ? '+' : ''}${newBalance} ₽</span>
+  </div></div>`;
+  
+  document.getElementById('paymentBreakdown').innerHTML = html;
+  document.getElementById('payTotalLessons').textContent = `${totalCovered}`;
+}
+
+function openPaymentModal(date) {
+  selectedDate = date;
+  const dateStr = date.toISOString().slice(0, 10);
+  document.getElementById('payDate').value = dateStr;
+  document.getElementById('paySum').value = '';
+  document.getElementById('payComment').value = '';
+  
+  const select = document.getElementById('payStudentSelect');
+  select.innerHTML = '';
+  data.students.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.name} (${s.pricePerLesson} ₽/зан)`;
+    if (s.id === currentStudentId) opt.selected = true;
+    select.appendChild(opt);
+  });
+  
+  const selectedStudent = data.students.find(s => s.id === select.value);
+  document.getElementById('payPrice').value = selectedStudent ? selectedStudent.pricePerLesson : DEFAULT_PRICE;
+  
+  updatePaymentBreakdown();
+  
+  const paymentsList = document.getElementById('paymentsList');
+  paymentsList.innerHTML = '';
+  const studentIdForList = currentStudentId === 'all' ? select.value : currentStudentId;
+  const dayPayments = data.payments.filter(p => p.studentId === studentIdForList && p.date === dateStr);
+  
+  if (dayPayments.length > 0) {
+    const title = document.createElement('div');
+    title.style.fontWeight = '600'; title.style.marginBottom = '10px'; title.textContent = 'Оплаты за этот день:';
+    paymentsList.appendChild(title);
+    dayPayments.forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'payment-item';
+      const sum = p.sum !== undefined ? p.sum : (p.amount * (p.pricePerLesson || DEFAULT_PRICE));
+      const priceUsed = p.pricePerLesson || DEFAULT_PRICE;
+      const lessons = p.amount !== undefined ? p.amount : Math.floor(sum / priceUsed);
+      const student = data.students.find(s => s.id === p.studentId);
+      item.innerHTML = `<div class="info"><div class="amount">${sum} ₽ <span style="font-size:11px; color:#78350f; font-weight:400;">(${lessons} зан.)</span></div><div class="sum">${student ? student.name : ''} ${p.comment ? '· ' + p.comment : ''}</div></div><button class="delete" onclick="deletePayment('${p.id}')">Удалить</button>`;
+      paymentsList.appendChild(item);
+    });
+  }
+  openModal('modalPayment');
+}
+
+document.getElementById('paySum').addEventListener('input', updatePaymentBreakdown);
+document.getElementById('payPrice').addEventListener('input', updatePaymentBreakdown);
+document.getElementById('payStudentSelect').addEventListener('change', (e) => {
+  const s = data.students.find(x => x.id === e.target.value);
+  document.getElementById('payPrice').value = s ? s.pricePerLesson : DEFAULT_PRICE;
+  updatePaymentBreakdown();
+});
+
+function savePayment() {
+  const studentId = document.getElementById('payStudentSelect').value;
+  const sum = parseFloat(document.getElementById('paySum').value) || 0;
+  const price = parseFloat(document.getElementById('payPrice').value) || 0;
+  
+  if (sum <= 0) return alert('Укажите сумму оплаты');
+  if (price <= 0) return alert('Стоимость занятия должна быть больше 0');
+  
+  data.payments.push({
+    id: Date.now().toString(), 
+    studentId, 
+    sum: sum, 
+    amount: Math.floor(sum / price),
+    pricePerLesson: price,
+    date: document.getElementById('payDate').value,
+    comment: document.getElementById('payComment').value.trim()
+  });
+  save(); 
+  closeModal('modalPayment'); 
+  render();
+}
+
+function deletePayment(paymentId) {
+  if (confirm('Удалить эту оплату?')) {
+    data.payments = data.payments.filter(p => p.id !== paymentId);
+    save(); 
+    openPaymentModal(selectedDate); 
+    render();
+  }
+}
+
+function openLessonModal(lessonId) {
+  selectedLessonId = lessonId;
+  const l = data.lessons.find(x => x.id === lessonId);
+  const student = data.students.find(s => s.id === l.studentId);
+  const statusText = { planned: 'Запланировано', done: 'Проведено', canceled: 'Отменено' }[l.status];
+  
+  let infoHtml = `<b>${student ? student.name : 'Неизвестный'}</b><br>`;
+  infoHtml += `${new Date(l.date).toLocaleDateString('ru-RU')} — <b>${statusText}</b>`;
+  if (l.cancelReason) infoHtml += `<br>Причина: <i>${l.cancelReason}</i>`;
+  
+  if (l.status === 'done' || l.status === 'planned') {
+    const paid = isLessonPaid(l);
+    if (paid === true) infoHtml += `<br><span style="color:#16a34a; font-weight:600;">✅ Оплачено</span>`;
+    else if (paid === false) infoHtml += `<br><span style="color:#dc2626; font-weight:600;">⚠️ Не оплачено</span>`;
+  } else if (l.status === 'canceled') {
+    if (l.chargeForCancel) {
+      infoHtml += `<br><span style="color:#f59e0b; font-weight:600;">💰 Оплата удержана (списана с баланса)</span>`;
+    } else {
+      infoHtml += `<br><span style="color:#16a34a; font-weight:600;">✅ Оплата не списана (осталась на балансе)</span>`;
+    }
+  }
+  
+  document.getElementById('lessonTitle').textContent = `Занятие ${l.time}`;
+  document.getElementById('lessonInfo').innerHTML = infoHtml;
+  document.getElementById('cancelBlock').style.display = 'none';
+
+  const actions = document.getElementById('lessonActions');
+  actions.innerHTML = '';
+
+  const addBtn = (text, cls, onclick) => {
+    const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = text; b.onclick = onclick; actions.appendChild(b);
+  };
+
+  if (l.status === 'planned') {
+    addBtn('✅ Проведено', 'btn-success', () => setStatus('done'));
+    addBtn('❌ Отменить', 'btn-danger', () => showCancel());
+  } else if (l.status === 'done') {
+    addBtn('↩ Вернуть в план', 'btn-ghost', () => setStatus('planned'));
+    addBtn('❌ Отменить', 'btn-danger', () => showCancel());
+  } else if (l.status === 'canceled') {
+    addBtn('↩ Вернуть в план', 'btn-ghost', () => setStatus('planned'));
+  }
+  addBtn('🗑 Удалить', 'btn-ghost', () => { if (confirm('Удалить занятие?')) { data.lessons = data.lessons.filter(x => x.id !== lessonId); save(); closeModal('modalLesson'); render(); } });
+  addBtn('Закрыть', 'btn-ghost', () => closeModal('modalLesson'));
+  openModal('modalLesson');
+}
+
+function setStatus(status) {
+  const l = data.lessons.find(x => x.id === selectedLessonId);
+  l.status = status;
+  if (status !== 'canceled') {
+    l.cancelReason = null;
+    l.chargeForCancel = false;
+  }
+  save(); closeModal('modalLesson'); render();
+}
+
+function showCancel() {
+  document.getElementById('cancelBlock').style.display = 'block';
+  document.getElementById('cancelCharge').checked = false;
+  
+  const actions = document.getElementById('lessonActions');
+  actions.innerHTML = '';
+  const addBtn = (text, cls, onclick) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = text; b.onclick = onclick; actions.appendChild(b); };
+  
+  addBtn('💾 Сохранить отмену', 'btn-danger', () => {
+    const reason = document.getElementById('cancelReason').value;
+    const charge = document.getElementById('cancelCharge').checked;
+    const l = data.lessons.find(x => x.id === selectedLessonId);
+    l.status = 'canceled';
+    l.cancelReason = reason === 'other' ? (document.getElementById('cancelReasonText').value || 'Не указана') : reason;
+    l.chargeForCancel = charge;
+    save(); closeModal('modalLesson'); render();
+  });
+  addBtn('Назад', 'btn-ghost', () => openLessonModal(selectedLessonId));
+}
+
+document.getElementById('cancelReason').onchange = (e) => {
+  document.getElementById('cancelReasonText').style.display = e.target.value === 'other' ? 'block' : 'none';
+};
+
+function changeMonth(delta) {
+  currentDate.setMonth(currentDate.getMonth() + delta);
+  render();
+}
+
+function render() {
+  rebuildPaidCache();
+  renderStudents();
+  
+  const statsContainer = document.getElementById('statsContainer');
+  if (currentStudentId === 'all') {
+    document.getElementById('currentLabel').textContent = 'Режим просмотра';
+    document.getElementById('currentStudentName').textContent = 'Все ученики';
+    const year = currentDate.getFullYear(), month = currentDate.getMonth();
+    const monthLessons = data.lessons.filter(l => { const d = new Date(l.date); return d.getFullYear() === year && d.getMonth() === month; });
+    const planned = monthLessons.filter(l => l.status === 'planned').length;
+    const done = monthLessons.filter(l => l.status === 'done').length;
+    const canceled = monthLessons.filter(l => l.status === 'canceled').length;
+    const paid = monthLessons.filter(l => (l.status === 'done' || l.status === 'planned' || (l.status === 'canceled' && l.chargeForCancel)) && isLessonPaid(l)).length;
+    let monthEarned = 0;
+    data.payments.forEach(p => { 
+      const d = new Date(p.date); 
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        monthEarned += (p.sum !== undefined ? p.sum : (p.amount * (p.pricePerLesson || DEFAULT_PRICE)));
+      }
+    });
+    
+    statsContainer.innerHTML = `<div class="stats-row">
+      <div class="stat-item planned"><div class="label">Запланировано</div><div class="value">${planned}</div></div>
+      <div class="stat-item paid"><div class="label">Оплачено</div><div class="value">${paid}</div></div>
+      <div class="stat-item unpaid"><div class="label">Не оплачено</div><div class="value">${done - paid}</div></div>
+      <div class="stat-item"><div class="label">Отменено</div><div class="value">${canceled}</div></div>
+      <div class="stat-item money"><div class="label">Получено</div><div class="value">${monthEarned} ₽</div></div>
+    </div>`;
+  } else {
+    document.getElementById('currentLabel').textContent = 'Текущий ученик';
+    const s = data.students.find(x => x.id === currentStudentId);
+    document.getElementById('currentStudentName').textContent = s ? s.name : '—';
+    const fin = s ? getFinancials(s.id) : { balanceMoney: 0 };
+    const bal = fin.balanceMoney;
+    statsContainer.innerHTML = `<div style="text-align:right;">
+      <div style="color:#666; font-size:13px;">Финансовый баланс</div>
+      <div class="balance-big ${bal > 0 ? 'positive' : bal < 0 ? 'negative' : 'zero'}">${(bal >= 0 ? '+' : '') + bal} ₽</div>
+      <div style="font-size:12px; color:#888; margin-top:2px;">${bal >= 0 ? 'Депозит / Предоплата' : 'Задолженность'}</div>
+    </div>`;
+  }
+  renderCalendar();
+}
+
+function populateStudentSelect() {
+  const select = document.getElementById('newStudentSelect');
+  select.innerHTML = '';
+  data.students.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.name;
+    if (s.id === currentStudentId && currentStudentId !== 'all') opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+const originalOpenModal = openModal;
+openModal = function(id) {
+  if (id === 'modalNew') populateStudentSelect();
+  originalOpenModal(id);
+};
+
+// Инициализация приложения
+loadData().then(() => {
+  if (data.students.length === 0) {
+    data.students.push({ id: 'demo1', name: 'Демо-ученик', className: '9', pricePerLesson: DEFAULT_PRICE, grades: { lastYear: '4', currentYear: '', q1: '5', q2: '', q3: '', q4: '' }, goalNote: 'Подготовка к экзамену' });
+    save();
+  }
+});
+</script>
+</body>
+</html>
